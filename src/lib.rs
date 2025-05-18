@@ -1,5 +1,8 @@
+use bevy::core_pipeline::Skybox;
 use bevy::core_pipeline::bloom::Bloom;
-use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::core_pipeline::smaa::Smaa;
+use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
+use bevy::pbr::ScreenSpaceAmbientOcclusion;
 use bevy::prelude::*;
 use bevy::scene::SceneInstanceReady;
 
@@ -7,14 +10,14 @@ pub struct CornPlugin;
 
 impl Plugin for CornPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(bevy_skein::SkeinPlugin::default())
-            .add_systems(
-                Startup,
-                (
-                    setup_camera_and_environment,
-                    setup_mesh_and_animation,
-                ),
-            );
+        app.add_plugins((
+            bevy_skein::SkeinPlugin::default(),
+            bevy_panorbit_camera::PanOrbitCameraPlugin,
+        ))
+        .add_systems(
+            Startup,
+            (setup_camera_and_environment, setup_mesh_and_animation),
+        );
 
         #[cfg(feature = "dev")]
         app.add_plugins((
@@ -66,29 +69,44 @@ fn setup_mesh_and_animation(
 
 fn setup_camera_and_environment(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
 ) {
-    // Circular base.
-    commands.spawn((
-        Mesh3d(meshes.add(Circle::new(20.0))),
-        MeshMaterial3d(materials.add(Color::WHITE)),
-        Transform::from_rotation(Quat::from_rotation_x(
-            -std::f32::consts::FRAC_PI_2,
-        )),
-    ));
-
     // Camera.
+    const INITIAL_FOCUS: Vec3 = Vec3::new(0.0, 3.0, 0.0);
+
     commands.spawn((
         Camera3d::default(),
         Camera {
             hdr: true,
             ..default()
         },
-        Tonemapping::AcesFitted,
+        Tonemapping::BlenderFilmic,
         Bloom::NATURAL,
         Transform::from_xyz(-3.5, 10.0, 15.0)
-            .looking_at(Vec3::new(0.0, 3.0, 0.0), Vec3::Y),
+            .looking_at(INITIAL_FOCUS, Vec3::Y),
+        DebandDither::Enabled,
+        bevy_panorbit_camera::PanOrbitCamera {
+            focus: INITIAL_FOCUS,
+            zoom_sensitivity: 0.5,
+            button_pan: MouseButton::Middle,
+            ..default()
+        },
+        Msaa::Off,
+        ScreenSpaceAmbientOcclusion::default(),
+        Smaa::default(),
+        Skybox {
+            image: asset_server.load("pisa_diffuse_rgb9e5_zstd.ktx2"),
+            brightness: 1000.0,
+            ..default()
+        },
+        EnvironmentMapLight {
+            diffuse_map: asset_server
+                .load("pisa_diffuse_rgb9e5_zstd.ktx2"),
+            specular_map: asset_server
+                .load("pisa_specular_rgb9e5_zstd.ktx2"),
+            intensity: 1000.0,
+            ..default()
+        },
     ));
 }
 
