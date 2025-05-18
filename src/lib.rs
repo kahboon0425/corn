@@ -1,8 +1,11 @@
+use avian3d::prelude::*;
+use bevy::color::palettes::tailwind::{PINK_100, RED_500};
 use bevy::core_pipeline::Skybox;
 use bevy::core_pipeline::bloom::Bloom;
 use bevy::core_pipeline::smaa::Smaa;
 use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::pbr::ScreenSpaceAmbientOcclusion;
+use bevy::picking::pointer::PointerInteraction;
 use bevy::prelude::*;
 use bevy::scene::SceneInstanceReady;
 
@@ -11,13 +14,17 @@ pub struct CornPlugin;
 impl Plugin for CornPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
+            PhysicsPlugins::default(),
+            PhysicsPickingPlugin,
+            PhysicsDebugPlugin::default(),
             bevy_skein::SkeinPlugin::default(),
             bevy_panorbit_camera::PanOrbitCameraPlugin,
         ))
         .add_systems(
             Startup,
             (setup_camera_and_environment, setup_mesh_and_animation),
-        );
+        )
+        .add_systems(Update, draw_mesh_intersections);
 
         #[cfg(feature = "dev")]
         app.add_plugins((
@@ -30,6 +37,7 @@ impl Plugin for CornPlugin {
 }
 
 const FACTORY: &str = "factory.glb";
+const CORN: &str = "corn.glb";
 
 fn setup_mesh_and_animation(
     mut commands: Commands,
@@ -65,6 +73,16 @@ fn setup_mesh_and_animation(
     commands
         .spawn((animation_to_play, mesh_scene))
         .observe(play_animation_when_ready);
+
+    commands.spawn((
+        SceneRoot(
+            asset_server
+                .load(GltfAssetLabel::Scene(0).from_asset(CORN)),
+        ),
+        Transform::from_xyz(5.0, 10.0, 5.0).with_rotation(
+            Quat::from_euler(EulerRot::XYZ, 3.57, 0.14, 2.95),
+        ),
+    ));
 }
 
 fn setup_camera_and_environment(
@@ -142,6 +160,25 @@ fn play_animation_when_ready(
                 ));
             }
         }
+    }
+}
+
+/// A system that draws hit indicators for every pointer.
+fn draw_mesh_intersections(
+    q_pointers: Query<&PointerInteraction>,
+    mut gizmos: Gizmos,
+) {
+    for (point, normal) in q_pointers
+        .iter()
+        .filter_map(|interaction| interaction.get_nearest_hit())
+        .filter_map(|(_entity, hit)| hit.position.zip(hit.normal))
+    {
+        gizmos.sphere(point, 0.05, RED_500);
+        gizmos.arrow(
+            point,
+            point + normal.normalize() * 0.5,
+            PINK_100,
+        );
     }
 }
 
